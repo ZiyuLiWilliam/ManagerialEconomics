@@ -39,3 +39,35 @@ text(x = log(optimal.lambda.ridge), y = median(cv.ridge$glmnet.fit$beta[,which.m
 plot(cv.lasso$glmnet.fit, xvar = "lambda", label = TRUE)
 abline(v = log(optimal.lambda.lasso), col = "blue", lwd = 2)
 text(x = log(optimal.lambda.lasso), y = median(cv.lasso$glmnet.fit$beta[,which.min(cv.lasso$cvm)]), labels = paste("lambda =", round(optimal.lambda.lasso, 5), "\nRMSE =", round(optimal.rmse.lasso, 5)), pos = 4, col = "blue")
+
+# 移除原始的州（State）列和其他不需要的列
+data5 <- subset(data, select = -c(State, County, X, CensusTract, Women, ChildPoverty))
+
+# forward, backward, and exhaustive selection
+
+#backward selection and cross-validation
+cv.error <- function(data, num.vars, k) {
+  n <- nrow(data)
+  cv.errors <- rep(0, k)
+  for (i in 1:k) {
+    set.seed(7)  
+    index <- sample(1:n, floor(n/k))
+    test <- data[index, ]
+    train <- data[-index, ]
+    model <- regsubsets(Poverty ~ ., data = train, method = "exhaustive", nvmax = num.vars)
+    model.summary <- summary(model)
+    best.model.id <- which.min(model.summary$bic)
+    best.model.vars <- names(coef(model, id = best.model.id))
+    formula.best <- as.formula(paste("Poverty ~", paste(best.model.vars[-1], collapse = "+")))
+    fitted.model <- lm(formula.best, data = train)
+    predictions <- predict(fitted.model, newdata = test)
+    cv.errors[i] <- mean((test$Poverty - predictions)^2)
+  }
+  mean(cv.errors)
+}
+# 从数据中移除州的虚拟变量以进行变量选择
+data_temp <- data5[, !grepl("State", names(data5))]
+
+# 使用不包含州虚拟变量的数据进行变量选择和交叉验证
+max.vars <- length(names(data_temp)) - 1
+mse.values <- sapply(1:max.vars, function(v) cv.error(data_temp, num.vars = v, k = 10))
